@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: orchestrator-data
+  namespace: batch
+spec:
+  storageClassName: local-path
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orchestrator-script
+  namespace: batch
+data:
+  orchestrator.py: |
+    #!/usr/bin/env python3
+    import json
+    import os
+    import threading
+    from datetime import datetime, timezone
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    DATA_FILE = "/data/results.jsonl"
+    os.makedirs("/data", exist_ok=True)
+
+    lock = threading.Lock()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            if self.path == "/record":
+                length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(length)
+                try:
+                    record = json.loads(body)
+                    record["received_at"] = datetime.now(timezone.utc).isoformat()
+                    with lock:
+                        with open(DATA_FILE, "a") as f:
+                            f.write(json.dumps(record) + "\n")
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"ok")
+                except Exception as e:
+                    self.send_response(500)
+                    self.end_headers()
+                    self.wfile.write(str(e).encode())
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_GET(self):
+            if self.path == "/health":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, format, *args):
+            pass  # suppress per-request access logs
+
+    if __name__ == "__main__":
+        server = ThreadingHTTPServer(("0.0.0.0", 8080), Handler)
+        print(f"Listening on :8080, writing to {DATA_FILE}", flush=True)
+        server.serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: batch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      containers:
+      - name: orchestrator
+        image: python:3-slim
+        command: ["python3", "/scripts/orchestrator.py"]
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "250m"
+            memory: "128Mi"
+        volumeMounts:
+        - name: script
+          mountPath: /scripts
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: script
+        configMap:
+          name: orchestrator-script
+      - name: data
+        persistentVolumeClaim:
+          claimName: orchestrator-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator-svc
+  namespace: batch
+spec:
+  selector:
+    app: orchestrator
+  ports:
+  - port: 8080
+    targetPort: 8080

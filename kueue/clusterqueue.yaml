@@ -1,0 +1,27 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: skyhawk-cq
+spec:
+  cohortName: default
+  queueingStrategy: BestEffortFIFO
+  flavorFungibility:
+    whenCanBorrow: MayStopSearch  # v1beta2: "Borrow" renamed to "MayStopSearch"
+    whenCanPreempt: TryNextFlavor
+  preemption:
+    reclaimWithinCohort: Any
+    borrowWithinCohort:
+      policy: LowerPriority
+    withinClusterQueue: LowerPriority
+  namespaceSelector: {}  # empty selector matches all namespaces
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: default
+      resources:
+      - name: cpu
+        nominalQuota: "3"
+      - name: memory
+        nominalQuota: 6Gi

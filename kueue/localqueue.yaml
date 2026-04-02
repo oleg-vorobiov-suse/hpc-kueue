@@ -1,0 +1,7 @@
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: skyhawk-lq
+  namespace: batch
+spec:
+  clusterQueue: skyhawk-cq
