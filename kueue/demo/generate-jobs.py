@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate all-jobs.yaml containing 500 Kueue-managed Job manifests."""
+"""Generate all-jobs.yaml containing 510 Kueue-managed Job manifests."""
 
-JOB_COUNT        = 500
+JOB_COUNT        = 510
 NAMESPACE        = "batch"
 QUEUE_NAME       = "skyhawk-lq"
 ORCHESTRATOR_URL = "http://orchestrator-svc.batch.svc.cluster.local:8080"

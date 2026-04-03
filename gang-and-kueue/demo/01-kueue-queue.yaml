@@ -1,0 +1,34 @@
+# Dedicated ClusterQueue for the gang-and-kueue benchmark.
+# Quota matches the Kueue standalone benchmark (3 CPU / 6Gi) so that concurrency
+# is identical: 1 gang of 3 pods runs at a time = 3 concurrent pods.
+# This ClusterQueue is intentionally separate from kueue/clusterqueue.yaml (skyhawk-cq)
+# so the two benchmarks do not interfere with each other.
+#
+# NOTE: Both ClusterQueues reference the same ResourceFlavor (default) which is
+# defined in kueue/resourceflavor.yaml. That ResourceFlavor must be applied first.
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: gang-cq
+spec:
+  namespaceSelector: {}
+  queueingStrategy: BestEffortFIFO
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: default
+      resources:
+      - name: cpu
+        nominalQuota: "3"      # 1 gang × 3 pods × 1 CPU = 3 concurrent pods
+      - name: memory
+        nominalQuota: 6Gi      # 1 gang × 3 pods × 2Gi = 6Gi
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: gang-bench-lq
+  namespace: gang-bench
+spec:
+  clusterQueue: gang-cq

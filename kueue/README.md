@@ -1,6 +1,6 @@
 # Kueue Scheduling Benchmark
 
-Measures Kueue admission latency across 500 sequential jobs and exposes why the delay between consecutive job starts grows over time.
+Measures Kueue admission latency across 510 sequential jobs and exposes why the delay between consecutive job starts grows over time.
 
 ## Prerequisites
 
@@ -42,9 +42,10 @@ kubectl create namespace batch
 ## 4. Apply Queue Infrastructure
 
 Order matters — ResourceFlavor must exist before ClusterQueue references it.
+`resourceflavor.yaml` lives in the parent directory (`hpc-kueue/`) because it is shared with the `gang-and-kueue/` benchmark.
 
 ```bash
-kubectl apply -f resourceflavor.yaml
+kubectl apply -f ../resourceflavor.yaml
 kubectl apply -f clusterqueue.yaml
 kubectl apply -f localqueue.yaml
 ```
@@ -74,7 +75,7 @@ cd demo/
 ./apply.sh
 ```
 
-This applies RBAC, deploys the orchestrator, and submits 500 jobs to Kueue. The orchestrator is a persistent HTTP server that collects timing records from each job as it completes.
+This applies RBAC, deploys the orchestrator, and submits 510 jobs to Kueue. The orchestrator is a persistent HTTP server that collects timing records from each job as it completes.
 
 Monitor progress:
 
@@ -105,7 +106,7 @@ Deletes all jobs and re-provisions a fresh PVC on the orchestrator (the `local-p
 ## Architecture
 
 ```
-500 Job objects  (kueue.x-k8s.io/queue-name: skyhawk-lq)
+510 Job objects  (kueue.x-k8s.io/queue-name: skyhawk-lq)
   │
   │  Kueue admits up to quota, BestEffortFIFO
   ▼

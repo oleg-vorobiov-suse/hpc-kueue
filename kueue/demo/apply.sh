@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the full demo: namespace, RBAC, orchestrator, job script ConfigMap, then 500 jobs.
+# Apply the full demo: namespace, RBAC, orchestrator, job script ConfigMap, then 510 jobs.
 # Run from the demo/ directory.
 set -euo pipefail
 
@@ -21,7 +21,7 @@ kubectl wait deployment/orchestrator -n batch \
 echo "==> Generating job manifests..."
 (cd "$DEMO_DIR" && python3 generate-jobs.py)
 
-echo "==> Submitting 500 jobs to Kueue..."
+echo "==> Submitting 510 jobs to Kueue..."
 kubectl apply -f "$DEMO_DIR/all-jobs.yaml"
 
 echo ""

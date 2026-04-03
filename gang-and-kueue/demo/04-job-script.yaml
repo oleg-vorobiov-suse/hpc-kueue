@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-script
+  namespace: gang-bench
+data:
+  job.py: |
+    #!/usr/bin/env python3
+    """
+    Combined Kueue + gang scheduling benchmark job.
+
+    Captures the full timeline from Kueue admission through the gang scheduler's
+    atomic startup to job completion. Because all pods in a gang are held at the
+    gang scheduler's Permit gate until every pod has a node reserved, the spread
+    between pod start times within a gang measures the atomicity guarantee directly.
+
+    Fields posted to the orchestrator:
+      gang_name            - gang identifier (e.g. gang-001)
+      pod_index            - JOB_COMPLETION_INDEX (0-2)
+      pod_name             - pod metadata.name
+      quota_reserved_time  - Kueue Workload condition QuotaReserved.lastTransitionTime
+      admitted_time        - Kueue Workload condition Admitted.lastTransitionTime
+      pod_scheduled_time   - Pod condition PodScheduled.lastTransitionTime
+      script_start         - datetime.now() at first line (after gang Permit gate releases pod)
+      script_end           - datetime.now() after 12s sleep
+
+    Key metrics derivable per gang:
+      Gang cohesion:       max(script_start) - min(script_start)   [near zero = working]
+      Kueue queue wait:    quota_reserved_time relative to other gangs
+      Permit gate cost:    max(pod_scheduled_time) - min(pod_scheduled_time)
+      Startup overhead:    script_start - pod_scheduled_time
+    """
+    import json
+    import os
+    import ssl
+    import time
+    import urllib.request
+    from datetime import datetime, timezone
+
+    def now_iso():
+        return datetime.now(timezone.utc).isoformat()
+
+    def k8s_get(path, token, ca_cert):
+        url = f"https://kubernetes.default.svc{path}"
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        ctx = ssl.create_default_context(cafile=ca_cert)
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as r:
+            return json.loads(r.read())
+
+    def get_condition_time(conditions, cond_type):
+        for c in (conditions or []):
+            if c.get("type") == cond_type and c.get("status") == "True":
+                return c.get("lastTransitionTime")
+        return None
+
+    def main():
+        script_start = now_iso()
+
+        gang_name  = os.environ["GANG_NAME"]
+        pod_index  = os.environ.get("JOB_COMPLETION_INDEX", "unknown")
+        pod_name   = os.environ["POD_NAME"]
+        sa_path    = "/var/run/secrets/kubernetes.io/serviceaccount"
+        namespace  = open(f"{sa_path}/namespace").read().strip()
+        token      = open(f"{sa_path}/token").read().strip()
+        ca_cert    = f"{sa_path}/ca.crt"
+        orch_url   = os.environ.get("ORCHESTRATOR_URL",
+                       "http://orchestrator-svc.gang-bench.svc.cluster.local:8080")
+
+        # Kueue Workload admission times
+        quota_reserved_time = None
+        admitted_time = None
+        try:
+            job = k8s_get(
+                f"/apis/batch/v1/namespaces/{namespace}/jobs/{gang_name}", token, ca_cert)
+            job_uid = job["metadata"]["uid"]
+            workloads = k8s_get(
+                f"/apis/kueue.x-k8s.io/v1beta2/namespaces/{namespace}/workloads",
+                token, ca_cert)
+            for wl in workloads.get("items", []):
+                for ref in wl.get("metadata", {}).get("ownerReferences", []):
+                    if ref.get("uid") == job_uid:
+                        conds = wl.get("status", {}).get("conditions", [])
+                        quota_reserved_time = get_condition_time(conds, "QuotaReserved")
+                        admitted_time       = get_condition_time(conds, "Admitted")
+                        break
+        except Exception as e:
+            print(f"Warning: Kueue workload query failed: {e}", flush=True)
+
+        # Pod scheduling time
+        pod_scheduled_time = None
+        try:
+            pod = k8s_get(
+                f"/api/v1/namespaces/{namespace}/pods/{pod_name}", token, ca_cert)
+            conds = pod.get("status", {}).get("conditions", [])
+            pod_scheduled_time = get_condition_time(conds, "PodScheduled")
+        except Exception as e:
+            print(f"Warning: pod query failed: {e}", flush=True)
+
+        time.sleep(12)
+        script_end = now_iso()
+
+        record = {
+            "gang_name":            gang_name,
+            "pod_index":            pod_index,
+            "pod_name":             pod_name,
+            "quota_reserved_time":  quota_reserved_time,
+            "admitted_time":        admitted_time,
+            "pod_scheduled_time":   pod_scheduled_time,
+            "script_start":         script_start,
+            "script_end":           script_end,
+        }
+
+        body = json.dumps(record).encode()
+        for attempt in range(5):
+            try:
+                req = urllib.request.Request(
+                    f"{orch_url}/record",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    r.read()
+                break
+            except Exception as e:
+                print(f"POST attempt {attempt + 1} failed: {e}", flush=True)
+                if attempt < 4:
+                    time.sleep(2 ** attempt)
+
+    if __name__ == "__main__":
+        main()
