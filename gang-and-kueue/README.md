@@ -15,41 +15,7 @@ Combines two orthogonal Kubernetes scheduling layers:
 - `local-path` provisioner installed
 - `kubectl` configured
 
-## 1. Install local-path Provisioner
-
-The orchestrator uses a `local-path` PVC for persistent storage. If the provisioner is not already installed in your cluster:
-
-```bash
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
-```
-
-Verify it is running before continuing:
-
-```bash
-kubectl -n local-path-storage get pod
-# local-path-provisioner-* should be Running
-```
-
-See [rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner?tab=readme-ov-file#installation) for details.
-
-## 2. Install Kueue
-
-```bash
-helm install kueue oci://registry.k8s.io/kueue/charts/kueue \
-  --version=0.17.0 \
-  --namespace kueue-system \
-  --create-namespace
-```
-
-## 3. Apply the ResourceFlavor (shared with kueue/ demo)
-
-```bash
-kubectl apply -f ../resourceflavor.yaml
-```
-
-Skip if already applied.
-
-## 4. Enable Feature Gates in RKE2
+## 1. Enable Feature Gates in RKE2
 
 Add to `/etc/rancher/rke2/config.yaml` on the server node, then restart RKE2:
 
@@ -67,6 +33,40 @@ Verify the API is available:
 kubectl get crd workloads.scheduling.k8s.io
 # must return a result — if not, the feature gate is not active
 ```
+
+## 2. Install local-path Provisioner
+
+The orchestrator uses a `local-path` PVC for persistent storage. If the provisioner is not already installed in your cluster:
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
+```
+
+Verify it is running before continuing:
+
+```bash
+kubectl -n local-path-storage get pod
+# local-path-provisioner-* should be Running
+```
+
+See [rancher/local-path-provisioner](https://github.com/rancher/local-path-provisioner?tab=readme-ov-file#installation) for details.
+
+## 3. Install Kueue
+
+```bash
+helm install kueue oci://registry.k8s.io/kueue/charts/kueue \
+  --version=0.17.0 \
+  --namespace kueue-system \
+  --create-namespace
+```
+
+## 4. Apply the ResourceFlavor (shared with kueue/ demo)
+
+```bash
+kubectl apply -f ../resourceflavor.yaml
+```
+
+Skip if already applied.
 
 ## 5. Run the Benchmark
 
